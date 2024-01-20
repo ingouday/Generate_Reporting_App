@@ -1,0 +1,291 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Data.SqlClient;
+using System.Data;
+using FrameworkEDK.Exceptions;
+using System.Diagnostics;
+using FrameworkEDK.Log;
+using System.Collections.Specialized;
+
+namespace ReportingAutomate
+{
+
+    internal class PliService
+    {
+        #region constatntes
+
+        /// <summary>
+        ///  Requête : INSERT plis importés de [Tbl_Pli] Gaelia IN [Tbl_Pli] GI4_RECETTE :  
+        /// </summary>
+        private const string RQT_INSERT_PLIGI4 =
+        "INSERT INTO [SRV-B1BDD-R01].[db_Client_GI4_RECETTE].[dbo].[Tbl_Pli]  ( [Idf_Chaine], [Idf_Commande], [Idf_Produit], [Idf_Lot], [Idf_Pli_Logique], [Idf_Pli], " +
+        "[Etat], [Zone_Client1], [Zone_Client2], [Nombre_Feuillet], [Poids], [Appel_annexe_bac_1], [Appel_annexe_bac_2], [Appel_annexe_bac_3], " +
+        "[Appel_annexe_bac_4], [Appel_annexe_bac_5], [Appel_annexe_bac_6], [Appel_annexe_bac_7], [Appel_annexe_bac_8], [Date_MSP], [Date_Depot], " +
+        "[Date_Expedition], [Code_Postal],     [Fin_Carton], [CIV2_Bordereau_CI], [CIV2_Lot_postal_CI], [CIV3_NoDepot], [CIV3_AnneeDepot], " +
+        "[CIV3_CoclicoFacturationNoDepot], [CIV3_CoclicoDeposantNoDepot],     [CIV3_Lot_postal], [Nombre_Page], [Idf_Eclatement], [Idf_Expedition], " +
+        "[HCI_Tarif], [HCI_Poids], [HCI_Destination], [HCI_Version], [date_derniere_mise_a_jour], [HCI_Mecanisable], [zone_surtaxe_WT], " +
+        "[CIV4_IdAnnoncePli], [CIV4_IdAnnonceDepot], [cle_ref_cip], [ce_format_cip], [ce_code_separation_cip], [prix_declare_affranchissement], " +
+        "[prix_declare_surtaxe_poids], [prix_declare_surtaxe_zone], [CIV4_NoDepot], [CIV4_DateDepot], [CIV4_CoclicoDeposant], [CIV4_CoclicoContractant], " +
+        "[CIV4_Bosco])" +
+        "SELECT top(1000) p.[Idf_Chaine], p.[Idf_Commande], p.[Idf_Produit], p.[Idf_Lot], p.[Idf_Pli_Logique], p.[Idf_Pli], " +
+        "CASE p.[Etat] WHEN 8 THEN 'Deposé OK' WHEN 9 THEN 'Deposé OK reprise' ELSE CAST(p.[Etat] AS varchar) END AS [Etat], p.[Zone_Client1], p.[Zone_Client2], p.[Nombre_Feuillet], " +
+        "p.[Poids], p.[Appel_annexe_bac_1], p.[Appel_annexe_bac_2], p.[Appel_annexe_bac_3], p.[Appel_annexe_bac_4], p.[Appel_annexe_bac_5], " +
+        "p.[Appel_annexe_bac_6], p.[Appel_annexe_bac_7], p.[Appel_annexe_bac_8], p.[Date_MSP], p.[Date_Depot], p.[Date_Expedition], p.[Code_Postal], " +
+        "p.[Fin_Carton], p.[CIV2_Bordereau_CI], p.[CIV2_Lot_postal_CI], p.[CIV3_NoDepot], p.[CIV3_AnneeDepot], p.[CIV3_CoclicoFacturationNoDepot], " +
+        "p.[CIV3_CoclicoDeposantNoDepot], p.[CIV3_Lot_postal], p.[Nombre_Page], p.[Idf_Eclatement], p.[Idf_Expedition], p.[HCI_Tarif], p.[HCI_Poids], " +
+        "p.[HCI_Destination], p.[HCI_Version], p.[date_derniere_mise_a_jour], p.[HCI_Mecanisable], p.[zone_surtaxe_WT], p.[CIV4_IdAnnoncePli], " +
+        "p.[CIV4_IdAnnonceDepot], p.[cle_ref_cip], p.[ce_format_cip], p.[ce_code_separation_cip], p.[prix_declare_affranchissement], " +
+        "p.[prix_declare_surtaxe_poids], p.[prix_declare_surtaxe_zone], p.[CIV4_NoDepot], p.[CIV4_DateDepot], p.[CIV4_CoclicoDeposant], " +
+        "p.[CIV4_CoclicoContractant], p.[CIV4_Bosco] " +
+        "FROM [bdd-si-reporting].[db_BDD_Editique].[dbo].[Tbl_Pli] p " +
+        "LEFT JOIN [bdd-si-reporting].[db_BDD_Editique].[dbo].[tbl_produit] x ON x.Idf_Commande = p.Idf_Commande  And x.Idf_Chaine = p.Idf_Chaine AND " +
+        "x.Idf_Produit = p.Idf_Produit " +
+        "LEFT JOIN [SRV-B1BDD-R01].[db_Client_GI4_RECETTE].[dbo].[Tbl_Pli] pl ON pl.Idf_Chaine = p.Idf_Chaine AND pl.Idf_Commande = p.Idf_Commande " +
+        "AND pl.Idf_Produit = p.Idf_Produit AND pl.Idf_Lot = p.Idf_Lot AND pl.Idf_Pli_Logique = p.Idf_Pli_Logique " +
+        "WHERE x.Informatique_code_chaine = @paramCodeTrt AND p.Etat IN (8,9) AND pl.Idf_Pli_Logique IS NULL";
+
+        /// <summary>
+        /// Requête pour mettre à jour Tbl_Pli de db_Client_GI4_RECETTE:
+        /// </summary>
+        private const string RQT_UPDATE_PLIGI4 =
+        "UPDATE [SRV-B1BDD-R01].[db_Client_GI4_RECETTE].[dbo].[Tbl_Pli]  SET [Id_Export] = @paramIdExport " +
+        "WHERE [Id_Export] IS NULL AND [Idf_Commande] IN (SELECT DISTINCT pl.Idf_Commande " +
+        "FROM [SRV-B1BDD-R01].[db_Client_GI4_RECETTE].[dbo].[Tbl_Pli] pl " +
+        "LEFT JOIN [bdd-si-reporting].[db_BDD_Editique].[dbo].[tbl_produit] x ON x.Idf_Commande = pl.Idf_Commande  And x.Idf_Chaine = pl.Idf_Chaine AND x.Idf_Produit = pl.Idf_Produit " +
+        "WHERE pl.Id_Export IS NULL AND x.Informatique_Code_Chaine = @paramCodeTrt)";
+
+        /// <summary>
+        /// Requête pour selectionner les plis de la table Tbl_Pli après sa mise à jour    
+        /// </summary>
+        private const string RQT_PLIS_SELECT =
+        "SELECT top(1000) p.[Idf_Chaine], p.[Idf_Commande], p.[Idf_Produit], p.[Idf_Lot], p.[Idf_Pli_Logique], p.[Idf_Pli], p.[Etat], p.[Zone_Client1], p.[Zone_Client2], " +
+        "p.[Nombre_Feuillet], p.[Poids], p.[Appel_annexe_bac_1], p.[Appel_annexe_bac_2], p.[Appel_annexe_bac_3], p.[Appel_annexe_bac_4], p.[Appel_annexe_bac_5], p.[Appel_annexe_bac_6], " +
+        "p.[Appel_annexe_bac_7], p.[Appel_annexe_bac_8], p.[Date_MSP], p.[Date_Depot], p.[Date_Expedition], p.[Code_Postal], p.[Fin_Carton], p.[CIV2_Bordereau_CI], p.[CIV2_Lot_postal_CI], " +
+        "p.[CIV3_NoDepot], p.[CIV3_AnneeDepot], p.[CIV3_CoclicoFacturationNoDepot], p.[CIV3_CoclicoDeposantNoDepot], p.[CIV3_Lot_postal], p.[Nombre_Page], p.[Idf_Eclatement], p.[Idf_Expedition], " +
+        "p.[HCI_Tarif], p.[HCI_Poids], p.[HCI_Destination], p.[HCI_Version], p.[date_derniere_mise_a_jour], p.[HCI_Mecanisable], p.[zone_surtaxe_WT], p.[CIV4_IdAnnoncePli], p.[CIV4_IdAnnonceDepot], " +
+        "p.[cle_ref_cip], p.[ce_format_cip], p.[ce_code_separation_cip], p.[prix_declare_affranchissement], p.[prix_declare_surtaxe_poids], p.[prix_declare_surtaxe_zone], p.[CIV4_NoDepot], p.[CIV4_DateDepot], " +
+        "p.[CIV4_CoclicoDeposant], p.[CIV4_CoclicoContractant], p.[CIV4_Bosco], p.[Id_Export]" +
+        "FROM [dbo].[Tbl_Pli] p " +
+        "WHERE p.Id_Export = @paramIdExport";
+
+        #endregion constantes
+
+        #region methodes  
+
+        /// <summary>
+        /// Insère des plis GI4 dans Tbl_Pli de la base de données db_Client_GI4_RECETTE à partir d'une liste de paramétrage de traitement.
+        /// </summary>
+        /// <param name="parametrageTraitements">La liste des objets de type ParametrageTraitement.</param>      
+        /// <exception cref="EdkException">une exception est levée en cas d'erreur d'insertion des plis dans Tbl_Pli.</exception>
+        internal void InsertPlisGI4(List<ParametrageTraitement> parametrageTraitements)
+        {
+            HashSet<string> codeTraitementsUniques = new HashSet<string>();
+
+            foreach (ParametrageTraitement parametrageTraitement in parametrageTraitements)
+            {
+                if (codeTraitementsUniques.Contains(parametrageTraitement.CodeTraitement))
+                {                   
+                    Logger.LogInfo("La chaine " + parametrageTraitement.CodeTraitement + " est dupliquée => à ingnorer");
+                }
+
+                else
+                {
+                    codeTraitementsUniques.Add(parametrageTraitement.CodeTraitement);
+                }                
+            }
+
+            // Parcour de la liste et insértion de chaque objet dans la base de données
+            foreach (string codeTraitementsUnique in codeTraitementsUniques)
+            {
+                using (SqlConnection connexionGI4 = new SqlConnection(Properties.Settings.Default.ChaineConnexionGI4))
+                using (SqlConnection connexionGaelia = new SqlConnection(Properties.Settings.Default.ChaineConnexionGaelia))
+                {
+                    try
+                    {
+                        connexionGI4.Open();
+                        connexionGaelia.Open();
+                        string rqtInsertPlis = string.Format(RQT_INSERT_PLIGI4);
+
+                        SqlCommand requeteInsertPlis = new SqlCommand(rqtInsertPlis, connexionGI4);
+
+                        requeteInsertPlis.Parameters.AddWithValue("@paramCodeTrt", codeTraitementsUnique);
+
+                        requeteInsertPlis.ExecuteNonQuery();
+                        Logger.LogInfo("Insertion des plis importés de Gaelia à Id_EXport NULL");
+                    }                   
+
+                    catch (Exception edkEx)
+                    {
+                        throw new EdkException($"Erreur lors de l'insertion des plis à Id_Export NULL dans Tbl_Pli de db_Client_GI4_RECETTE", edkEx)
+                        {
+                            NumeroErreur = (ushort)CodesErreur.ErreurInsertPli,
+                            TypeErreur = TraceLevel.Error
+                        };
+                    }
+
+                    finally
+                    {
+                        connexionGI4.Close();
+                        connexionGaelia.Close();
+                    }
+                }
+            }           
+        }
+
+        /// <summary>
+        /// Mise à jour Tbl_Pli db_Client_GI4_RECETTE:
+        /// </summary>
+        /// <param name="codeTraitement">Le code de traitement.</param>
+        /// <param name="id_Export">L'identifiant de l'export à associer aux plis récupérés.</param>        
+        /// <exception cref="EdkException">Une exception est levée en cas d'erreur.</exception>
+        internal void UpdatePlisGI4(string codeTraitement, int Id_Export)
+        {
+            using (SqlConnection connexionGI4 = new SqlConnection(Properties.Settings.Default.ChaineConnexionGI4))
+            using (SqlConnection connexionGaelia = new SqlConnection(Properties.Settings.Default.ChaineConnexionGaelia))
+            {
+                try
+                {
+                    connexionGI4.Open();
+                    connexionGaelia.Open();
+                    string rqtUpdatetPlis = string.Format(RQT_UPDATE_PLIGI4);
+
+                    SqlCommand requeteUpdatetPlis = new SqlCommand(rqtUpdatetPlis, connexionGI4);
+
+                    // Parcourir la liste et insérer chaque objet dans la base de données
+
+                    requeteUpdatetPlis.Parameters.AddWithValue("@paramCodeTrt", codeTraitement);
+                    requeteUpdatetPlis.Parameters.AddWithValue("@paramIdExport", Id_Export);
+
+                    requeteUpdatetPlis.ExecuteNonQuery();
+
+                    Logger.LogVerbose("Mise à jour reussie de Tbl_Pli de db_Client_GI4_RECETTE ");
+                }
+
+                catch (Exception edkEx)
+                {
+                    throw new EdkException($"Une erreur s'est produite lors de la mise à jour de Tbl_Pli", edkEx)
+                    {
+                        NumeroErreur = (ushort)CodesErreur.ErreurUpdatePli,
+                        TypeErreur = TraceLevel.Error
+                    };
+                }
+            }
+        }
+
+        /// <summary>
+        /// Selection des plis de Tbl_Pli après la mise à jour.
+        /// </summary>
+        /// <param name="parametrageTraitements">La liste des paramétrages de traitement pour lesquels récupérer les plis importés.</param>      
+        /// <exception cref="EdkException">Levée en cas d'erreur lors de la selection des plis.</exception>         
+        internal List<Plis> GetPlisGi4ByIdExport(int idExport)
+        {
+            List<Plis> plis = new List<Plis>();
+
+            try
+            {
+                Logger.LogVerbose("Selection des plis de Tbl_Pli de GI4 pour Id_Export : " + idExport);
+
+                // Création des paramètres
+                SqlParameter paramIdExport = new SqlParameter("@paramIdExport", SqlDbType.VarChar);
+                paramIdExport.Value = idExport;
+
+                string rqtPlis = string.Format(RQT_PLIS_SELECT, paramIdExport.ParameterName);
+
+                using (SqlConnection connexion = new SqlConnection(Properties.Settings.Default.ChaineConnexionGI4))
+                {
+                    connexion.Open();
+                    SqlCommand requetePlis = new SqlCommand(rqtPlis, connexion);
+                    requetePlis.Parameters.Add(paramIdExport);
+
+                    using (SqlDataReader drPlis = requetePlis.ExecuteReader())
+                    {
+                        while (drPlis.Read())
+                        {
+                            Plis pliGI4 = new Plis
+                            {
+                                IdfChaine = drPlis.GetString(0),
+                                IdfCommande = drPlis.GetInt32(1),
+                                IdfProduit = drPlis.GetString(2),
+                                IdfLot = drPlis.GetString(3),
+                                IdfPliLogique = drPlis.GetInt32(4),
+                                IdfPli = drPlis.GetString(5),
+                                Etat = drPlis.GetString(6),
+                                ZoneClient1 = drPlis.IsDBNull(7) ? null : drPlis.GetString(7),
+                                ZoneClient2 = drPlis.IsDBNull(8) ? null : drPlis.GetString(8),
+                                NombreFeuillet = drPlis.IsDBNull(9) ? (short?)null : drPlis.GetInt16(9),
+                                Poids = drPlis.IsDBNull(10) ? (short?)null : drPlis.GetInt16(10),
+                                AppelAnnexeBac1 = drPlis.IsDBNull(11) ? (bool?)null : drPlis.GetBoolean(11),
+                                AppelAnnexeBac2 = drPlis.IsDBNull(12) ? (bool?)null : drPlis.GetBoolean(12),
+                                AppelAnnexeBac3 = drPlis.IsDBNull(13) ? (bool?)null : drPlis.GetBoolean(13),
+                                AppelAnnexeBac4 = drPlis.IsDBNull(14) ? (bool?)null : drPlis.GetBoolean(14),
+                                AppelAnnexeBac5 = drPlis.IsDBNull(15) ? (bool?)null : drPlis.GetBoolean(15),
+                                AppelAnnexeBac6 = drPlis.IsDBNull(16) ? (bool?)null : drPlis.GetBoolean(16),
+                                AppelAnnexeBac7 = drPlis.IsDBNull(17) ? (bool?)null : drPlis.GetBoolean(17),
+                                AppelAnnexeBac8 = drPlis.IsDBNull(18) ? (bool?)null : drPlis.GetBoolean(18),
+                                DateMSP = drPlis.IsDBNull(19) ? (DateTime?)null : drPlis.GetDateTime(19),
+                                DateDepot = drPlis.IsDBNull(20) ? (DateTime?)null : drPlis.GetDateTime(20),
+                                DateExpedition = drPlis.IsDBNull(21) ? (DateTime?)null : drPlis.GetDateTime(21),
+                                CodePostal = drPlis.IsDBNull(22) ? null : drPlis.GetString(22),
+                                FinCarton = drPlis.IsDBNull(23) ? (bool?)null : drPlis.GetBoolean(23),
+                                CIV2BordereauCI = drPlis.IsDBNull(24) ? null : drPlis.GetString(24),
+                                CIV2LotPostalCI = drPlis.IsDBNull(25) ? (int?)null : drPlis.GetInt32(25),
+                                CIV3NoDepot = drPlis.IsDBNull(26) ? (long?)null : drPlis.GetInt64(26),
+                                CIV3AnneeDepot = drPlis.IsDBNull(27) ? (short?)null : drPlis.GetInt16(27),
+                                CIV3CoclicoFacturationNoDepot = drPlis.IsDBNull(28) ? (long?)null : drPlis.GetInt64(28),
+                                CIV3CoclicoDeposantNoDepot = drPlis.IsDBNull(29) ? (long?)null : drPlis.GetInt64(29),
+                                CIV3LotPostal = drPlis.IsDBNull(30) ? (int?)null : drPlis.GetInt32(30),
+                                NombrePage = drPlis.IsDBNull(31) ? (short?)null : drPlis.GetInt16(31),
+                                IdfEclatement = drPlis.IsDBNull(32) ? null : drPlis.GetString(32),
+                                IdfExpedition = drPlis.IsDBNull(33) ? (int?)null : drPlis.GetInt32(33),
+                                HCITarif = drPlis.IsDBNull(34) ? null : drPlis.GetString(34),
+                                HCIPoids = drPlis.IsDBNull(35) ? (int?)null : drPlis.GetInt32(35),
+                                HCIDestination = drPlis.IsDBNull(36) ? null : drPlis.GetString(36),
+                                HCIVersion = drPlis.IsDBNull(37) ? (short?)null : drPlis.GetInt16(37),
+                                DateDerniereMiseAJour = drPlis.IsDBNull(38) ? (DateTime?)null : drPlis.GetDateTime(38),
+                                HCIMecanisable = drPlis.IsDBNull(39) ? (byte?)null : drPlis.GetByte(39),
+                                ZoneSurtaxeWT = drPlis.IsDBNull(40) ? (int?)null : drPlis.GetInt32(40),
+                                CIV4IdAnnoncePli = drPlis.IsDBNull(41) ? (int?)null : drPlis.GetInt32(41),
+                                CIV4IdAnnonceDepot = drPlis.IsDBNull(42) ? (int?)null : drPlis.GetInt32(42),
+                                CleRefCIP = drPlis.IsDBNull(43) ? null : drPlis.GetString(43),
+                                CEFormatCIP = drPlis.IsDBNull(44) ? null : drPlis.GetString(44),
+                                CECodeSeparationCIP = drPlis.IsDBNull(45) ? (short?)null : drPlis.GetInt16(45),
+                                PrixDeclareAffranchissement = drPlis.IsDBNull(46) ? (decimal?)null : drPlis.GetDecimal(46),
+                                PrixDeclareSurtaxePoids = drPlis.IsDBNull(47) ? (decimal?)null : drPlis.GetDecimal(47),
+                                PrixDeclareSurtaxeZone = drPlis.IsDBNull(48) ? (decimal?)null : drPlis.GetDecimal(48),
+                                CIV4NoDepot = drPlis.IsDBNull(49) ? (int?)null : drPlis.GetInt32(49),
+                                CIV4DateDepot = drPlis.IsDBNull(50) ? (DateTime?)null : drPlis.GetDateTime(50),
+                                CIV4CoclicoDeposant = drPlis.IsDBNull(51) ? (int?)null : drPlis.GetInt32(51),
+                                CIV4CoclicoContractant = drPlis.IsDBNull(52) ? (int?)null : drPlis.GetInt32(52),
+                                CIV4Bosco = drPlis.IsDBNull(53) ? (short?)null : drPlis.GetInt16(53),
+                                Id_Export = drPlis.IsDBNull(54) ? (int?)null : drPlis.GetInt32(54)
+                            };
+
+                            plis.Add(pliGI4);
+                        }
+                    }
+                }
+            }
+
+            catch (Exception edkEx)
+            {
+                throw new EdkException($"Erreur lors de la selection des plis de Tbl_Pli de db_Client_GI4_RECETTE ({idExport})", edkEx)
+                {
+                    NumeroErreur = (ushort)CodesErreur.ErreurSelectPlis,
+                    TypeErreur = TraceLevel.Error
+                };
+            }
+
+            return plis;
+        }
+    }
+
+    #endregion methode
+}
+
+
+
+
+

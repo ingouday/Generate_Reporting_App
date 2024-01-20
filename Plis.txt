@@ -1,0 +1,73 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace ReportingAutomate
+{
+    internal class Plis
+    {
+        public int? Id_Export { get; set; }
+        public string IdfChaine { get; set; }
+        public int IdfCommande { get; set; }
+        public string IdfProduit { get; set; }
+        public string IdfLot { get; set; }
+        public int IdfPliLogique { get; set; }
+        public string IdfPli { get; set; }
+        public string Etat { get; set; }
+        public string ZoneClient1 { get; set; }
+        public string ZoneClient2 { get; set; }
+        public short? NombreFeuillet { get; set; }
+        public short? Poids { get; set; }
+        public bool? AppelAnnexeBac1 { get; set; }
+        public bool? AppelAnnexeBac2 { get; set; }
+        public bool? AppelAnnexeBac3 { get; set; }
+        public bool? AppelAnnexeBac4 { get; set; }
+        public bool? AppelAnnexeBac5 { get; set; }
+        public bool? AppelAnnexeBac6 { get; set; }
+        public bool? AppelAnnexeBac7 { get; set; }
+        public bool? AppelAnnexeBac8 { get; set; }
+        public DateTime? DateMSP { get; set; }
+        public DateTime? DateDepot { get; set; }
+        public DateTime? DateExpedition { get; set; }
+        public string CodePostal { get; set; }
+        public bool? FinCarton { get; set; }
+        public string CIV2BordereauCI { get; set; }
+        public int? CIV2LotPostalCI { get; set; }
+        public long? CIV3NoDepot { get; set; }
+        public short? CIV3AnneeDepot { get; set; }
+        public long? CIV3CoclicoFacturationNoDepot { get; set; }
+        public long? CIV3CoclicoDeposantNoDepot { get; set; }
+        public int? CIV3LotPostal { get; set; }
+        public short? NombrePage { get; set; }
+        public string IdfEclatement { get; set; }
+        public int? IdfExpedition { get; set; }
+        public string HCITarif { get; set; }
+        public int? HCIPoids { get; set; }
+        public string HCIDestination { get; set; }
+        public short? HCIVersion { get; set; }
+        public DateTime? DateDerniereMiseAJour { get; set; }
+        public byte? HCIMecanisable { get; set; }
+        public int? ZoneSurtaxeWT { get; set; }
+        public int? CIV4IdAnnoncePli { get; set; }
+        public int? CIV4IdAnnonceDepot { get; set; }
+        public string CleRefCIP { get; set; }
+        public string CEFormatCIP { get; set; }
+        public short? CECodeSeparationCIP { get; set; }
+        public decimal? PrixDeclareAffranchissement { get; set; }
+        public decimal? PrixDeclareSurtaxePoids { get; set; }
+        public decimal? PrixDeclareSurtaxeZone { get; set; }
+        public int? CIV4NoDepot { get; set; }
+        public DateTime? CIV4DateDepot { get; set; }
+        public int? CIV4CoclicoDeposant { get; set; }
+        public int? CIV4CoclicoContractant { get; set; }
+        public short? CIV4Bosco { get; set; }
+
+        // Constructeur par défaut
+        public Plis()
+        {
+        }
+      
+    }
+}

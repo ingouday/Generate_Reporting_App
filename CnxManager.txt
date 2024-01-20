@@ -1,0 +1,23 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace ReportingAutomate
+{ 
+    /// <summary>
+    /// Permet la gestion de la chaine de connexion
+    /// </summary>
+    public static class ConnectionManager
+    {
+        /// <summary>
+        /// Définit la chaine de connexion à la db_Client_GI4_RECETTE
+        /// </summary>
+        /// <param name="connectionString">connectionString</param>
+        public static void SetConnectionStringGI4(string connectionString)
+        {
+            Properties.Settings.Default["ChaineConnexionGI4"] = connectionString;
+        }
+    }
+}

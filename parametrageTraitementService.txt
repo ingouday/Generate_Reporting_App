@@ -1,0 +1,114 @@
+using FrameworkEDK.Exceptions;
+using FrameworkEDK.Log;
+using FrameworkEDK.Mail;
+using System;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Diagnostics;
+using System.Globalization;
+using System.Text.RegularExpressions;
+
+namespace ReportingAutomate
+{
+    internal class ParametrageTraitementService
+    {
+        #region methodes
+
+        /// <summary>
+        /// Récupère la liste des paramétrages de traitement.
+        /// </summary>
+        /// <returns>La liste des paramétrages de traitement.</returns>
+        internal List<ParametrageTraitement> RecupParametrageTraitement()
+        {
+            List<ParametrageTraitement> parametrageTraitements = GetListeParametrageTraitements();
+            return parametrageTraitements;
+        }
+
+        /// <summary>
+        /// Reccupére la liste de paramétrage à partir de la configuration traitement 
+        /// </summary>
+        /// <returns>Une liste d'objets ParametrageTraitement contenant les paramétrages de traitement obtenus.</returns>
+        /// <exception cref="EdkException">Une exception est levée en cas d'erreur lors de l'acquisition des traitements.</exception>
+        private static List<ParametrageTraitement> GetListeParametrageTraitements()
+        {            
+                List<ParametrageTraitement> listeParametrageTraitements = new List<ParametrageTraitement>();
+             
+                StringCollection listeParametrageTraitementsToString = Properties.Settings.Default.listeTraitements;
+
+                foreach (string elementParametrageTraitementToString in listeParametrageTraitementsToString)
+                {
+                    try
+                    {                    
+                        ParametrageTraitement parametrageTraitement = GetTraitement(elementParametrageTraitementToString);
+                        listeParametrageTraitements.Add(parametrageTraitement);
+                    }
+
+                    catch (Exception ex)
+                    {
+                        Logger.LogError("Erreur d'acquisition de paramètre traitement : " + elementParametrageTraitementToString + " le traitement n'est pas pris en compte", ex);                       
+                    }
+                }
+
+                return listeParametrageTraitements;            
+        }
+
+        /// <summary>
+        /// Récupère un objet ParametrageTraitement à partir d'une chaîne de paramètres.
+        /// </summary>
+        /// <param name="parametres">La chaîne de paramètres contenant les informations du paramétrage du traitement.</param>
+        /// <returns>L'objet ParametrageTraitement correspondant aux paramètres spécifiés.</returns>
+        /// <exception cref="ArgumentException">Une exception est levée si le format des paramètres est invalide.</exception>
+        /// <exception cref="EdkException">Une exception est levée en cas d'erreur lors de la conversion des paramètres.</exception>
+        private static ParametrageTraitement GetTraitement(string parametres)
+        {
+            try
+            {
+                string[] parametresArray = parametres.Split('|');
+
+                if (parametresArray.Length != 4)
+                {
+                    throw new ArgumentException("Le nombre de paramètres différent de 4 : format invalide.");                   
+                }
+
+                ParametrageTraitement parametrageTraitement = new ParametrageTraitement();
+                parametrageTraitement.CodeTraitement = parametresArray[0];
+
+                // Validation du paramètre : dureeRetention (nombre de jours)
+
+                if (!int.TryParse(parametresArray[1], out int dureeRetention))
+                {
+                    Logger.LogError("Le format de la durée de retention pour la chaine " + parametresArray[0] + " est invalide : " + parametresArray[1]);
+                    throw new ArgumentException("Le paramètre dureeRetention doit être un entier.");                  
+                }
+
+                parametrageTraitement.DureeRetention = dureeRetention;
+
+                // Validation du paramètre: heure d'exécution (d'export)
+
+                if (!TimeSpan.TryParseExact(parametresArray[2], @"hh\:mm", CultureInfo.InvariantCulture, out TimeSpan heureExecution))
+                {
+                    Logger.LogError("Le format de l'heure d'execution pour la chaine " + parametresArray[0] + " est invalide : " + parametresArray[2]);
+                    throw new ArgumentException("Le paramètre heure d'execution doit être au format 'hh:mm'.");                    
+                }
+
+                parametrageTraitement.Heure_Execution = heureExecution;                
+
+                parametrageTraitement.NomCSV = parametresArray[3];
+
+                Logger.LogInfo("L'element de la liste traitement " + parametresArray[0]+"|" + parametresArray[1]+ "|" + parametresArray[2]+ "|" + parametresArray[3] + " est valide ");
+                return parametrageTraitement;
+            }
+
+            catch (Exception edkEx)
+            {
+                throw new EdkException($"Erreur de passage de traitement: le format des paramètres à passer est invalide.", edkEx)                
+                {
+                    NumeroErreur = (ushort)CodesErreur.ErreurFormatTrt,
+                    TypeErreur = TraceLevel.Error
+                };                
+            }
+        }         
+    }
+
+    #endregion methodes
+}

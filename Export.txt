@@ -1,0 +1,33 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace ReportingAutomate
+{
+    public class Export
+    {
+        public int Id_Export { get; set; }
+        public string CodeTraitement { get; set; }
+        public DateTime Date_Heure_Export { get; set; }
+        public int DureeRetention { get; set; }
+        public int NbrPlis { get; set; }
+        public string NomCSV { get; set; }
+        public DateTime DateDebutExport { get; set; }
+        public DateTime DateFinExport { get; set; }
+        public string StatutExport { get; set; }
+        public Export()
+        {
+
+        }
+
+        public Export(string codeTraitement, int dureeRetention, DateTime date_Heure_Export, string nomCSV)
+        {
+            CodeTraitement = codeTraitement;
+            DureeRetention = dureeRetention;
+            Date_Heure_Export = date_Heure_Export;
+            NomCSV = nomCSV;          
+        }      
+    }
+}

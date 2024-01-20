@@ -1,0 +1,162 @@
+using FrameworkEDK.Exceptions;
+using FrameworkEDK.Log;
+using FrameworkEDK.Log.Logstach.DTO;
+using System;
+using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Data;
+using System.Data.SqlClient;
+using System.Diagnostics;
+using System.IO;
+using System.Text;
+
+namespace ReportingAutomate
+{
+    /// <summary>
+    /// génération de reporting au pli Standard
+    /// </summary>
+    internal class GenerateReportings
+    {
+        #region constantes
+
+        /// <summary>
+        /// Séparateur CSV standard
+        /// </summary>
+        private const string CSV_SEPARATOR = ";";
+
+        #endregion constantes
+
+        #region Fields
+
+        /// <summary>
+        /// String builder d'ecriture du CSV généré
+        /// </summary>
+        private StringBuilder _csvContent;
+
+        #endregion Fields
+
+        #region Methods
+
+        /// <summary>
+        /// Initialise une nouvelle instance de <see cref="GenerateReportings"/>
+        /// </summary>
+        public GenerateReportings()
+        {
+            this._csvContent = new StringBuilder();
+        }
+
+        /// <summary>
+        /// Génère un fichier CSV contenant le contenu des plis pour le code de traitement spécifié, si des plis sont récupérés.
+        /// </summary>
+        /// <param name="elementTraitement">L'objet Export contenant les informations du traitement.</param>
+        /// <param name="pliGI4">La liste des plis à inclure dans le fichier CSV.</param>      
+        internal void GenerateCSV(Export elementTraitement, List<Plis> pliGI4)
+        {            
+            ///verification de recup des plis pour le code de trt passé à l'automate: on ne le génére que si le code trt n'est pas encore traité            
+
+            if (pliGI4.Count != 0)
+            {
+                Logger.LogInfo("Génération de contenu du fichier CSV pour la chaine: " + elementTraitement.CodeTraitement);
+                ExeReportingTraitement(elementTraitement.NomCSV, pliGI4);
+            }
+           
+        }
+
+        /// <summary>
+        /// Exécute la génération du contenu du fichier CSV en utilisant le nom de fichier spécifié et la la liste des plis fournie 
+        /// </summary>
+        /// <param name="nomCSV">le nom de CSV à utiliser></param>
+        /// <param name="plisGI4">La liste des plis à inclure dans le fichier CSV></param> 
+        private void ExeReportingTraitement(string nomCSV, List<Plis> plisGI4)
+        {
+            StringBuilder csvContent = new StringBuilder();
+
+            // Ajout en-tête de CSV
+
+            csvContent.AppendLine("Id_Export;Idf_Commande; Idf_Produit; Idf_Lot; Idf_Pli_Logique; Idf_Pli; Etat; Zone_Client1; Zone_Client2; Nombre_Feuillet; " +
+            "Poids; Appel_annexe_bac_1; Appel_annexe_bac_2; Appel_annexe_bac_3; Appel_annexe_bac_4; Appel_annexe_bac_5; Appel_annexe_bac_6; Appel_annexe_bac_7; Appel_annexe_bac_8; " +
+            "Date_MSP; Date_Depot; Date_Expedition; Code_Postal; Fin_Carton; CIV2_Bordereau_CI; CIV2_Lot_postal_CI; CIv3_NoDepot; Civ3_AnneeDepot; Civ3_CoclicoFacturationNoDepot; " +
+            "Civ3_CoclicoDeposantNoDepot; Civ3_Lot_Postal; Nombre_Page; Idf_Eclatement; Idf_Expedition; HCI_Tarif; HCI_Poids; HCI_Destination; HCI_Version; date_derniere_mise_a_jour; " +
+            "HCI_Mecanisable; zone_surtaxe_WT; CIV4_IdAnnoncePli; CIV4_IdAnnonceDepot; cle_ref_cip; ce_format_cip; ce_code_separation_cip; prix_declare_affranchissement;" +
+            " prix_declare_surtaxe_poids; prix_declare_surtaxe_zone; CIV4_NoDepot; CIV4_DateDepot; CIV4_CoclicoDeposant; CIV4_CoclicoContractant; CIV4_Bosco");
+
+            foreach (Plis pliGI4 in plisGI4)
+            {
+                csvContent.Append(pliGI4.Id_Export + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.IdfChaine + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.IdfProduit + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.IdfLot + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.IdfPliLogique + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.IdfPli + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.Etat + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.ZoneClient1 + CSV_SEPARATOR);
+                csvContent.Append($"\"{pliGI4.ZoneClient2}\"" + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.NombreFeuillet + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.Poids + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.AppelAnnexeBac1 + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.AppelAnnexeBac2 + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.AppelAnnexeBac3 + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.AppelAnnexeBac4 + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.AppelAnnexeBac5 + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.AppelAnnexeBac6 + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.AppelAnnexeBac7 + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.AppelAnnexeBac8 + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.DateMSP + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.DateDepot + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.DateExpedition + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CodePostal + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.FinCarton + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV2BordereauCI + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV2LotPostalCI + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV3NoDepot + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV3AnneeDepot + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV3CoclicoFacturationNoDepot + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV3CoclicoDeposantNoDepot + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV3LotPostal + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.NombrePage + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.IdfEclatement + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.IdfExpedition + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.HCITarif + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.HCIPoids + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.HCIDestination + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.HCIVersion + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.DateDerniereMiseAJour + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.HCIMecanisable + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.ZoneSurtaxeWT + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV4IdAnnoncePli + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV4IdAnnonceDepot + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CleRefCIP + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CEFormatCIP + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CECodeSeparationCIP + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.PrixDeclareAffranchissement + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.PrixDeclareSurtaxePoids + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.PrixDeclareSurtaxeZone + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV4NoDepot + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV4DateDepot + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV4CoclicoDeposant + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV4CoclicoContractant + CSV_SEPARATOR);
+                csvContent.Append(pliGI4.CIV4Bosco + CSV_SEPARATOR);
+                csvContent.AppendLine();
+            }
+
+            Logger.LogInfo("Fichier CSV généré || nombre de plis exportés : " + plisGI4.Count);
+
+            // Enregistre le fichier CSV généré : stockage dans le dossier Output spécifié:
+
+            string csvFileName = nomCSV;
+            string csvFilePath = Path.Combine(Properties.Settings.Default.Output_Directory, csvFileName);
+
+            File.WriteAllText(csvFilePath, csvContent.ToString(), Encoding.UTF8);
+            ClearStringBuildersRecap();
+        }
+
+        /// <summary>
+        /// Efface le contenu du StringBuilder utilisé pour le récapitulatif du fichier CSV.
+        /// </summary>
+        private void ClearStringBuildersRecap()
+        {
+            this._csvContent.Clear();
+        }       
+    }
+    #endregion Methods
+}

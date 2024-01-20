@@ -1,0 +1,167 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using FrameworkEDK;
+using FrameworkEDK.Exceptions;
+using FrameworkEDK.Log;
+using FrameworkEDK.Mail;
+
+namespace ReportingAutomate
+{
+    /// <summary>
+    /// Traitement
+    /// </summary>
+    internal class Program
+    {
+
+        #region Fields
+        #endregion Fields
+
+        protected Program()
+        {
+        }      
+
+        /// <summary>
+        /// Methode de démarrage
+        /// </summary>
+        private static void Main()
+        {
+            // Init du framework
+            EdkFwkInitializer.InitFwk(Properties.Settings.Default);
+
+            // Champ permetant de gerer la monoexecution
+            bool instanceUnique;
+            using (Mutex mutex = new Mutex(true, Properties.Settings.Default.EDKFWK_appName, out instanceUnique))
+            {
+                if (!instanceUnique)
+                {
+                    // Une autre instance a été trouvée
+                    Logger.LogVerbose("Le programme est déjà en cours d'exécution.");
+                    return;
+                }
+
+                // Init des Connexions String db_Client_GI4_RECETTE 
+                ReportingAutomate.ConnectionManager.SetConnectionStringGI4(Properties.Settings.Default.ChaineConnexionGI4);
+
+                // Création du process
+
+                Logger.LogInfo("========= Lancement du programme =========");
+
+                // Creation objet de traitement
+
+                GenerateReportings generateReportings = new GenerateReportings();
+                ParametrageTraitementService parametrageTraitementService = new ParametrageTraitementService();
+                ExportService exportService = new ExportService();
+                PliService pliService = new PliService();
+                Purge purge = new Purge();
+
+                // Récupération des paramètres passés en console
+
+                try
+                {
+                    DateTime dateExcution = DateTime.Now;
+
+                    Logger.LogInfo("===== Début du Traitement des plis : " + DateTime.Now + " =======");
+
+                    // paramétrage : reccupération & vérification des paramétres
+
+                    List<ParametrageTraitement> parametrageTraitements = parametrageTraitementService.RecupParametrageTraitement();
+
+                    if(parametrageTraitements.Count != 0)
+                    {
+                        // Step 1 : IMPORT des plis de Gaelia & INSERT:  sans Id_Export
+
+                        pliService.InsertPlisGI4(parametrageTraitements);
+
+                        // Step 2 : EXPORT des plis vers db_Client_GI4_RECETTE
+
+                        foreach (ParametrageTraitement parametrageTraitement in parametrageTraitements)
+                        {
+                            if (VerifHeureExport( dateExcution, parametrageTraitement.Heure_Execution))
+                            {                               
+                                try
+                                {
+                                    Logger.LogInfo("Début de l'export des plis pour la chaine " + parametrageTraitement.CodeTraitement + " à " + DateTime.Now);
+
+                                    //2.a Ajout date début + icrementation de Id_Export +  récuperation Id_export à jour
+
+                                    Export export = exportService.GetExportWithIdExport(parametrageTraitement);
+                               
+                                    //2.b UPDATE à jour de Tbl_Pli avec Id_Export à jour:
+
+                                    pliService.UpdatePlisGI4(parametrageTraitement.CodeTraitement, export.Id_Export);
+
+                                    ///2.c SELECT des plis + Id_Export dans db_Client_GI4_RECETTE : Tbl_Export à jour
+
+                                    List<Plis> PlisGI4ByElementTraitement = pliService.GetPlisGi4ByIdExport(export.Id_Export);
+
+                                    //2.d Générer le nom et le contenu du fichier CSV :
+
+                                    export.NomCSV = exportService.GenerateCsvFileName(export.CodeTraitement);
+
+                                    generateReportings.GenerateCSV(export, PlisGI4ByElementTraitement);
+
+                                    ///2.e UPDATE à jour de Tbl_Export :
+
+                                    exportService.UpdateExport(export, PlisGI4ByElementTraitement.Count);
+
+                                    Logger.LogInfo("Fin export des plis de la chaine " + parametrageTraitement.CodeTraitement + " à " + DateTime.Now);                                    
+                                }
+
+                                catch(Exception ex)
+                                {
+                                    Logger.LogError("Erreur dans l'export des plis de la chaine " + parametrageTraitement.CodeTraitement, ex);
+                                }
+                            }
+
+                            else
+                            {
+                                Logger.LogInfo("le traitement des plis de la chaine " + parametrageTraitement.CodeTraitement + " n'a pas été excuter à : " + dateExcution.TimeOfDay +
+                                    " / Heure d'exécution : " + parametrageTraitement.Heure_Execution);
+                                //Mailer.SendErrorMail("Le traitement des plis de la chaine  " + parametrageTraitement.CodeTraitement + " n'a pas été effectué avec succès .");                               
+                            }                                                     
+                        }
+                    }
+                    
+                    else
+                    {
+                        Logger.LogInfo("Il n'y a pas de paramètre récuperé." );
+                    }
+
+                    Logger.LogInfo("====== Fin du Traitement des plis : " + DateTime.Now + " =======");
+
+                    // Step 3 : Purge des plis de Tbl_Pli (si dépassement de durée de retention)
+
+                    Logger.LogInfo("===== Début de Purge des plis : " + DateTime.Now + " =======");
+
+                    purge.PurgePlis();
+
+                    Logger.LogInfo("===== Fin de Purge des plis : " + DateTime.Now + " =======");
+
+                    Logger.LogInfo("========= Fin du programme =========");
+                }
+
+                catch (Exception ex)
+                {                    
+                    Logger.LogError("Le programme va s'arrêter en raison d'arguments invalides", ex);
+                    //Mailer.SendErrorMail("Erreur dans le traitement ", ex);
+                }
+
+                return;
+            } 
+        }
+
+        /// <summary>
+        /// Vérification de l'heure d'export
+        /// </summary>
+        /// <param name="dateExcution"></param>
+        /// <param name="heureExecution"></param>
+        /// <returns></returns>
+        private static bool VerifHeureExport(DateTime dateExcution, TimeSpan heureExecution)
+        {
+            return dateExcution.Hour == heureExecution.Hours && dateExcution.Minute == heureExecution.Minutes;
+        }
+    }
+}

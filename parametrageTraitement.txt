@@ -1,0 +1,28 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace ReportingAutomate
+{
+    internal class ParametrageTraitement
+    {
+        public string CodeTraitement { get; set; }
+        public int DureeRetention { get; set; }
+        public TimeSpan Heure_Execution { get; set; }
+        public string NomCSV { get; set; }
+
+        public ParametrageTraitement()
+        {
+
+        }
+        public ParametrageTraitement(string codeTraitement, int dureeRetention, TimeSpan heure_Execution, string nomCSV)
+        {
+            codeTraitement = CodeTraitement;
+            dureeRetention = DureeRetention;
+            heure_Execution = Heure_Execution;
+            nomCSV = NomCSV;
+        }
+    }
+}

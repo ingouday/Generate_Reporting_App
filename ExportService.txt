@@ -1,0 +1,235 @@
+using FrameworkEDK.Exceptions;
+using FrameworkEDK.Log;
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Data.SqlClient;
+using System.Diagnostics;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace ReportingAutomate
+{
+    internal class ExportService
+    {
+        #region constantes
+        /// <summary>
+        /// Requête pour insèrer les plis extraites de la table "tbl_pli" de Gaelia dans pliGI4 (Tbl_Export de db_Client_GI4_recette)   
+        /// </summary>
+        private const string RQT_INSERT_EXPORT =
+            "INSERT INTO [dbo].[Tbl_Export] ([Code_Traitement], [Duree_Retention], [Date_Debut_Export],[Date_Heure_Export] , [Statut_Export]) " +
+             "VALUES (@paramCode_Traitement, @paramDuree_Retention, @paramdate_Debut_Export, @paramdate_Date_Heure_Export, @paramStatut_Export)";
+
+        /// <summary>
+        /// Requête pour selectionner les données de Tbl_Export
+        /// </summary>
+        private const string RQT_EXPORT_WITH_ID =
+            "SELECT [Id_Export] ,[Code_Traitement] " +
+            " FROM [dbo].[Tbl_Export] WHERE [Code_Traitement] = @paramCodeTraitement AND [Statut_Export] = @paramStatutExport ";
+
+        /// <summary>
+        /// Requête pour mettre à jour la table Tbl_Export
+        /// </summary>
+        private const string RQT_UPDATE_EXPORT =
+           "UPDATE [dbo].[Tbl_Export] SET [Nombre_Plis_Exportes] = @paramNbrPlis, [Nom_CSV_Exporte] = @paramNomCSV, [Date_Fin_Export] = @paramDateFinExport, [Statut_Export] = @paramStatutExport " +
+            "WHERE [Id_Export] = @paramIdExport";       
+
+        #endregion constantes
+
+        #region methodes
+
+        /// <summary>
+        /// Obtient un objet Export avec un Id_Export mis à jour à partir d'un objet ParametrageTraitement donné.
+        /// </summary>
+        /// <param name="parametrageTraitement">L'objet ParametrageTraitement utilisé pour créer l'objet Export.</param>
+        /// <returns>L'objet Export créé avec un ID d'export mis à jour.</returns>
+        internal Export GetExportWithIdExport(ParametrageTraitement parametrageTraitement)
+        {
+            Export elementTraitement = new Export(parametrageTraitement.CodeTraitement, parametrageTraitement.DureeRetention,
+            CombineDateWithTimeSpan(parametrageTraitement.Heure_Execution), parametrageTraitement.NomCSV);
+
+            // Gestion de date début export
+            elementTraitement.DateDebutExport = DateTime.Now;
+
+            // Insertion de données dans Tbl_Export
+            InsertExport(elementTraitement);
+
+            // Récuperation des données dans Tbl_Export avec Id_Export à jour
+            elementTraitement = GetElementTraitementsWithIdExport(elementTraitement);
+
+            return elementTraitement;
+        }
+
+        /// <summary>
+        /// Met à jour d'un élément Export dans Tbl_Export avec le nombre de plis, le nom du CSV, la date de fin d'export et le statut d'export spécifiés.
+        /// </summary>
+        /// <param name="elementListeTraitement">L'objet Export à mettre à jour.</param>
+        /// <param name="nbrPlis">Le nombre de plis à mettre à jour dans l'export.</param>
+        /// <exception cref="EdkException">Une exception est levée en cas d'erreur lors de la mise à jour de la table export.</exception>
+        internal void UpdateExport(Export elementListeTraitement, int nbrPlis)
+        {
+            try
+            {
+                DateTime dateFinElementTraitement = DateTime.Now;
+                string rqtUpdateExport = string.Format(RQT_UPDATE_EXPORT);
+
+                using (SqlConnection connexion = new SqlConnection(Properties.Settings.Default.ChaineConnexionGI4))
+                {
+                    connexion.Open();
+                    SqlCommand requeteUpdateExport = new SqlCommand(rqtUpdateExport, connexion);
+                    requeteUpdateExport.Parameters.AddWithValue("@paramIdExport", elementListeTraitement.Id_Export);
+                    requeteUpdateExport.Parameters.AddWithValue("@paramNbrPlis", nbrPlis);
+                    requeteUpdateExport.Parameters.AddWithValue("@paramNomCSV", elementListeTraitement.NomCSV);
+                    requeteUpdateExport.Parameters.AddWithValue("@paramDateFinExport", dateFinElementTraitement);
+                    requeteUpdateExport.Parameters.AddWithValue("@paramStatutExport", "EN-COURS");
+
+                    // Exécution de la requête SQL 
+                    requeteUpdateExport.ExecuteNonQuery();
+
+                    Logger.LogInfo("Mise à jour reussie de Tbl_Export pour la chaine " + elementListeTraitement.CodeTraitement);
+                }
+            }
+
+            catch (Exception edk)
+            {
+                throw new EdkException($"Erreur de mise à jour de la table export ", edk)
+                {
+                    NumeroErreur = (ushort)CodesErreur.ErreurUpdateExport,
+                    TypeErreur = TraceLevel.Error
+                };
+            }
+        }
+
+        /// <summary>
+        ///  génère un nom du fichier CSV basé sur le code de traitement et en utilisant des pseudo-variables pour la date et lh'eure courante.
+        /// </summary>
+        /// <param name="codeTraitement"> code de traitement à utilisé pour générerne nom de CSV</param>
+        /// <returns>csvFileName</returns>
+        internal string GenerateCsvFileName(string codeTraitement)
+        {
+            return FrameworkEDK.PseudoVariable.PseudoVariableProcessor.ComputePseudoVariables(codeTraitement + ".REPORTING.#DATE_HEURE_COURANTE#.csv");
+        }
+
+        /// <summary>
+        /// Combine la date d'aujourd'hui avec un TimeSpan spécifié pour obtenir un DateTime qui représente une date et une heure spécifiques.
+        /// </summary>
+        /// <param name="timeSpan">Le TimeSpan à ajouter à la date d'aujourd'hui.</param>
+        /// <returns>Un DateTime qui combine la date d'aujourd'hui avec l'heure spécifiée par le TimeSpan.</returns>
+        private static DateTime CombineDateWithTimeSpan(TimeSpan timeSpan)
+        {
+            DateTime today = DateTime.Today;  // Récupère la date d'aujourd'hui
+            DateTime combinedDateTime = today.Add(timeSpan);  // Ajout de TimeSpan à la date d'aujourd'hui
+
+            return combinedDateTime;
+        }
+
+        ///<summary>
+        /// Insertion de la ligne exportée dans la table Tbl_Export de la base db_Client_GI4_recette
+        ///</summary>      
+        ///<remarks>cette insertion à pour objectif de traçer tous les exports des plis selectionnés</remarks>
+        ///<param name="elementListeTraitement"objet Export contenant les infos à insèrer></param>      
+        ///<exception cref="EdkException">Une exception est levée en cas d'erreur lors de l'insertion</exception>
+        private static void InsertExport(Export elementListeTraitement)
+        {
+            using (SqlConnection connexion = new SqlConnection(Properties.Settings.Default.ChaineConnexionGI4))
+            {
+                try
+                {
+                    connexion.Open();
+                    string rqtInsertExport = string.Format(RQT_INSERT_EXPORT);
+
+                    SqlCommand requeteInsertExport = new SqlCommand(rqtInsertExport, connexion);
+
+                    requeteInsertExport.Parameters.AddWithValue("@paramCode_Traitement", elementListeTraitement.CodeTraitement);
+                    requeteInsertExport.Parameters.AddWithValue("@paramDuree_Retention", elementListeTraitement.DureeRetention);
+                    requeteInsertExport.Parameters.AddWithValue("@paramdate_Debut_Export", elementListeTraitement.DateDebutExport);
+                    requeteInsertExport.Parameters.AddWithValue("@paramdate_Date_Heure_Export", elementListeTraitement.Date_Heure_Export);
+                    requeteInsertExport.Parameters.AddWithValue("@paramStatut_Export ", "A-TRAITER");
+                    requeteInsertExport.ExecuteNonQuery();
+
+                    Logger.LogInfo("Insertion de pli exporté dans Tbl_Export : reussie");
+                }
+
+                catch (Exception edk)
+                {
+                    throw new EdkException($"Erreur d'insertion de pli exporté dans Tbl_Export", edk)
+                    {
+                        NumeroErreur = (ushort)CodesErreur.ErreurInsertExport,
+                        TypeErreur = TraceLevel.Error
+                    };
+                }
+
+                finally
+                {
+                    connexion.Close();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Reccupère un élément de Tbl_Export en utilisant le code de traitement et le statut d'export à jour
+        /// </summary>
+        /// <param name="elementTraitement">Objet export contenant le code de traitemnt et le statut d'export à utiliser lors de la recherche.</param>
+        /// <exception cref="EdkException">Une exception est levée en cas d'erreur lors de la récupération des données.</exception>"
+        private static Export GetElementTraitementsWithIdExport(Export elementTraitement)
+        {
+            Export newElementTraitement = new Export();
+            try
+            {
+                // Création de paramètre
+                SqlParameter paramCodeTraitement = new SqlParameter("@paramCodeTraitement", SqlDbType.VarChar)
+                {
+                    Value = elementTraitement.CodeTraitement
+                };
+                SqlParameter paramDateExport = new SqlParameter("@paramStatutExport", SqlDbType.VarChar)
+                {
+                    Value = "A-TRAITER"
+                };
+
+                string rqtListeTraitementsWithIdExport = string.Format(RQT_EXPORT_WITH_ID, paramDateExport.ParameterName);
+
+                using (SqlConnection connexion = new SqlConnection(Properties.Settings.Default.ChaineConnexionGI4))
+                {
+                    connexion.Open();
+                    SqlCommand requeteListeTraitementsWithIdExport = new SqlCommand(rqtListeTraitementsWithIdExport, connexion);
+                    requeteListeTraitementsWithIdExport.Parameters.Add(paramCodeTraitement);
+                    requeteListeTraitementsWithIdExport.Parameters.Add(paramDateExport);
+
+                    using (SqlDataReader drElementTraitement = requeteListeTraitementsWithIdExport.ExecuteReader())
+                    {
+                        if (drElementTraitement.FieldCount > 1)
+                        {
+                            // Parcours des résultats
+                            while (drElementTraitement.Read())
+                            {
+                                newElementTraitement.Id_Export = drElementTraitement.GetInt32(0);
+                                newElementTraitement.CodeTraitement = drElementTraitement.GetString(1);
+                            }
+                        }
+
+                        else
+                        {
+                            throw new Exception("Impossible de trouver des résultats valides pour l'élément avec le code de traitement " + elementTraitement.CodeTraitement);
+                        }
+                    }
+                }
+
+                Logger.LogInfo("Reccuperation de Id_Export à jour pour " + elementTraitement.CodeTraitement);
+            }
+
+            catch (Exception edk)
+            {
+                throw new EdkException($"Erreur de selection des données à jour de Tbl_Export ", edk)
+                {
+                    NumeroErreur = (ushort)CodesErreur.ErreurTraitement,
+                    TypeErreur = TraceLevel.Error
+                };
+            }
+
+            return newElementTraitement;
+        }
+        
+        #endregion methodes
+    }
+}

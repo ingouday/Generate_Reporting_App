@@ -1,0 +1,237 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Data.SqlClient;
+using System.Diagnostics;
+using System.IO;
+using FrameworkEDK;
+using FrameworkEDK.Exceptions;
+using FrameworkEDK.Log;
+using System.Data;
+
+namespace ReportingAutomate
+{
+    /// <summary>
+    /// Purge des plis qui ont dépassé la durée de retention fixée
+    /// </summary> 
+    internal class Purge
+    {
+        #region constantes      
+
+        /// <summary>
+        /// Requête : récuperation des plis à purger de Tbl_Export
+        /// </summary>
+        private const string RQT_SELECT_EXPORT =
+            "SELECT Id_Export, Duree_Retention, Date_Heure_Export " +
+            "FROM [dbo].[Tbl_Export] " + 
+            "WHERE Statut_Export = @paramStatutExport";
+
+        /// <summary>
+        /// Requête : purge des plis non exportés de Tbl_Pli
+        /// </summary>
+        private const string RQT_DLT_PLI =
+            "DELETE " +
+            "FROM [dbo].[Tbl_Pli] " +
+            "WHERE Id_Export = @paramIdExport";
+
+        /// <summary>
+        /// Requête trace des plis dans Tbl_Export: mise à jour de Statut de pli(purgé / en cours de traitement) dans Tbl_Export
+        /// </summary>
+        private const string RQT_UPDATE_Statut_Export =
+          "UPDATE [dbo].[Tbl_Export] " +
+          "SET Statut_Export = @paramStatutExport " +
+          "WHERE Id_Export = @paramIdExport ";
+
+        #endregion constantes
+
+        #region Methods
+
+        /// <summary>
+        /// Initialise une nouvelle instance de <see cref="Purge"/>
+        /// </summary>
+        public Purge()
+        {
+        }
+
+        /// <summary>
+        /// Effectue la purge des plis qui ont dépassé la durée de rétention.
+        /// </summary>
+        /// <exception cref="EdkException">Levée en cas d'erreur lors de la purge.</exception>
+        public void PurgePlis()
+        {            
+            try
+            {
+                List<Export> exportsForPurge = GetExportsForPurge();
+
+                foreach(Export exportForPurge in exportsForPurge) 
+                {                  
+                    DeletepliFromTblPli(exportForPurge.Id_Export);
+                    UpdateStatutExport(exportForPurge.Id_Export);
+                }
+           }
+
+            catch (Exception edk)
+            {
+                throw new EdkException($"Erreur de purge des plis qui ont dépassé la durée de retention.", edk)
+                {
+                    NumeroErreur = (ushort)CodesErreur.ErreurDelete,
+                    TypeErreur = TraceLevel.Error
+                };
+            }
+        }
+
+        /// <summary>
+        /// Met à jour le statut d'un export en "PURGE" dans la table Tbl_Export.
+        /// </summary>
+        /// <param name="Id_Export">L'identifiant de l'export à mettre à jour.</param>
+        /// <exception cref="EdkException">Levée en cas d'erreur lors de la mise à jour du statut.</exception>
+        private void UpdateStatutExport(int Id_Export)
+        {
+            try
+            {
+                using (SqlConnection connexion = new SqlConnection(Properties.Settings.Default.ChaineConnexionGI4))
+                {
+                    connexion.Open();
+
+                    string rqtUpdateStatutExport = string.Format(RQT_UPDATE_Statut_Export); ;
+                    SqlCommand requeteUpdateStatutExport = new SqlCommand(rqtUpdateStatutExport, connexion);
+                    requeteUpdateStatutExport.Parameters.AddWithValue("@paramStatutExport", "PURGE");
+                    requeteUpdateStatutExport.Parameters.AddWithValue("@paramIdExport", Id_Export);
+
+                    requeteUpdateStatutExport.ExecuteNonQuery();                   
+                }
+            }
+
+            catch(Exception edk)
+            {
+                throw new EdkException($"Erreur de mise à jour de la colonne Statut_Purge de Tbl_Export  ", edk)
+                {
+                    NumeroErreur = (ushort)CodesErreur.ErreurUpdatePurge,
+                    TypeErreur = TraceLevel.Error
+                };
+            }            
+        }
+
+        /// <summary>
+        /// Supprimme les plis qui ont dépassé la durée de retention correspondant à un export de Tbl_Pli
+        /// </summary>
+        /// <param name="Id_Export">L'identifiant de l'export dont les plis doivent être supprimés.</param>
+        /// <exception cref="EdkException">Levée en cas d'erreur lors de la suppression des plis.</exception>
+        private void DeletepliFromTblPli(int Id_Export)
+        {            
+            try
+            {                
+                using (SqlConnection connexion = new SqlConnection(Properties.Settings.Default.ChaineConnexionGI4))
+                {
+                    connexion.Open();
+
+                    string rqtDltPli = string.Format(RQT_DLT_PLI); ;
+                    SqlCommand requeteDltPli = new SqlCommand(rqtDltPli, connexion);
+                    requeteDltPli.Parameters.AddWithValue("@paramIdExport", Id_Export);
+
+                    int rowsAffected = requeteDltPli.ExecuteNonQuery();
+                    Logger.LogInfo("Le nombre de plis purgés = " + rowsAffected);
+                    ;
+                }
+            }
+
+            catch(Exception edk)
+            {
+                throw new EdkException($"Erreur de suppression des plis de tbl_pli  ", edk)
+                {
+                    NumeroErreur = (ushort)CodesErreur.ErreurDeletePli,
+                    TypeErreur = TraceLevel.Error
+                };
+            }                   
+        }
+
+        /// <summary>
+        /// réccupère la liste des plis à purger
+        /// </summary>
+        /// <returns>La liste des exports à purger</returns>
+        /// <exception cref="EdkException">Levée en cas d'erreur lors de la récupération des exports.</exception>
+        private List<Export> GetExportsForPurge()
+        {
+            List<Export> exports = new List<Export>() ;
+            try
+            {
+                SqlParameter paramStatutExport = new SqlParameter("@paramStatutExport", SqlDbType.VarChar);
+                paramStatutExport.Value = "EN-COURS";
+                string rqtExport =
+                        string.Format(RQT_SELECT_EXPORT);
+                using (SqlConnection connexion = new SqlConnection(Properties.Settings.Default.ChaineConnexionGI4))
+                {
+                    connexion.Open();
+                    SqlCommand requeteExport = new SqlCommand(rqtExport, connexion);
+                    requeteExport.Parameters.Add(paramStatutExport);
+
+
+                    using (SqlDataReader drExport = requeteExport.ExecuteReader())
+                    {
+                        while (drExport.Read())
+                        {
+                            Export export = new Export();
+                            export.Id_Export = drExport.GetInt32(0);
+                            export.DureeRetention = drExport.GetInt32(1);
+                            export.Date_Heure_Export = drExport.GetDateTime(2);
+
+                            bool checkDureeRetention = CheckDureeRetentionValue(export.DureeRetention, export.Date_Heure_Export);
+                            if(checkDureeRetention) 
+                            { 
+                                exports.Add(export);
+                                Logger.LogInfo("Il existe des plis à purger pour la chaine " + export.CodeTraitement);
+                            }
+
+                            else
+                            {
+                                Logger.LogInfo("Pas de plis à purger " + export.CodeTraitement);
+                            }
+                        }
+                    }
+                }
+            }
+
+            catch (Exception edk)
+            {
+                throw new EdkException($"Erreur de reccuperation des plis à purger ", edk)
+                {
+                    NumeroErreur = (ushort)CodesErreur.ErreurGetForPurge,
+                    TypeErreur = TraceLevel.Error
+                };
+            }        
+
+            return exports;
+        }
+
+        /// <summary>
+        /// verification de la durée de retention par rapport à la date d'export
+        /// </summar>
+        private bool CheckDureeRetentionValue(int dureeRetention, DateTime Date_Heure_Export)
+        {
+            bool checkDureeRetention;
+
+            DateTime currentDate = DateTime.Now;
+            TimeSpan difference =  currentDate - Date_Heure_Export;
+            int joursDifference = difference.Days;
+
+            if(joursDifference > dureeRetention)
+            {
+                checkDureeRetention = true;
+                Logger.LogInfo("La durée de retention est dépassée, passage à la purge");
+            }
+
+            else
+            {
+                checkDureeRetention = false;
+
+                Logger.LogInfo("La durée de retention n'est pas dépassée, pas de plis à purger");
+            }
+            return checkDureeRetention;
+        }
+    }
+
+    #endregion Methods
+}
+
